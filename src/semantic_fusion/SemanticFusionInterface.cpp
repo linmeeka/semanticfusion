@@ -71,9 +71,15 @@ void remove_index(std::vector<T>& vector, const std::vector<int>& to_remove) {
   vector.resize(vector.size() - to_remove.size());
 }
 
+/*
+@ brief
+调用GPU，把class_pro投影到render map上
+*/
 void SemanticFusionInterface::CalculateProjectedProbabilityMap(const std::unique_ptr<ElasticFusionInterface>& map) {
+  // 地图的长宽
   const int id_width = map->width();
   const int id_height = map->height();
+  // c，n 。虽然不知道这为什么是height和width
   const int table_height = class_probabilities_gpu_->height();
   const int table_width = class_probabilities_gpu_->width();
   renderProbabilityMap(map->GetSurfelIdsGpu(),id_width,id_height,
@@ -82,6 +88,10 @@ void SemanticFusionInterface::CalculateProjectedProbabilityMap(const std::unique
                        rendered_class_probabilities_gpu_->mutable_gpu_data());
 }
 
+/*
+@ brief
+几个get函数
+*/
 std::shared_ptr<caffe::Blob<float> > SemanticFusionInterface::get_rendered_probability() {
   return rendered_class_probabilities_gpu_;
 }
@@ -94,6 +104,10 @@ int SemanticFusionInterface::max_num_components() const {
   return max_components_;
 }
 
+/*
+@ brief
+用于更新概率图的节点，增加删除surfel
+*/
 void SemanticFusionInterface::UpdateProbabilityTable(const std::unique_ptr<ElasticFusionInterface>& map)
 {
   const int new_table_width = map->GetMapSurfelCount();
@@ -110,6 +124,11 @@ void SemanticFusionInterface::UpdateProbabilityTable(const std::unique_ptr<Elast
   current_table_size_ = new_table_width;
 }
 
+/*
+@ brief
+没有用到。
+是用于CPU更新概率图的
+*/
 int SemanticFusionInterface::UpdateSurfelProbabilities(const int surfel_id, 
                                                         const std::vector<float>& class_probs) 
 {
@@ -137,15 +156,25 @@ int SemanticFusionInterface::UpdateSurfelProbabilities(const int surfel_id,
   return -1;
 }
 
+/*
+@ brief
+更新概率图
+@ param
+probs：caffe处理的一帧的分割结果。
+map：elastic fusion的map
+*/
 void SemanticFusionInterface::UpdateProbabilities(std::shared_ptr<caffe::Blob<float> > probs,
                                       const std::unique_ptr<ElasticFusionInterface>& map)
 {
   CHECK_EQ(num_classes_,probs->channels());
+  // surfel地图的长宽，这个地图为什么存在长宽呢。？
   const int id_width = map->width();
   const int id_height = map->height();
+  // 这是<h,w,c,h>? 
   const int prob_width = probs->width();
   const int prob_height = probs->height();
   const int prob_channels = probs->channels();
+  // 现在class_pro中的surfel数量
   const int map_size = class_probabilities_gpu_->width();
   fuseSemanticProbabilities(map->GetSurfelIdsGpu(),id_width,id_height,probs->gpu_data(),
                     prob_width,prob_height,prob_channels,
@@ -154,6 +183,10 @@ void SemanticFusionInterface::UpdateProbabilities(std::shared_ptr<caffe::Blob<fl
   map->UpdateSurfelClassGpu(map_size,class_max_gpu_->gpu_data(),class_max_gpu_->gpu_data() + map_size,colour_threshold_);
 }
 
+/*
+@ brief
+CRF部分
+*/
 void SemanticFusionInterface::CRFUpdate(const std::unique_ptr<ElasticFusionInterface>& map, const int iterations) {
   float* surfel_map = map->GetMapSurfelsGpu();
   // We very inefficiently allocate and clear a chunk of memory for every CRF update
@@ -196,17 +229,24 @@ void SemanticFusionInterface::CRFUpdate(const std::unique_ptr<ElasticFusionInter
   delete [] my_surfels;
 }
 
+/*
+@ brief
+把最大类别map，存成一张小图像
+*/
 void SemanticFusionInterface::SaveArgMaxPredictions(std::string& filename,const std::unique_ptr<ElasticFusionInterface>& map) {
+  // 最大概率值和类别编号的初始指针位置
   const float* max_prob = class_max_gpu_->cpu_data() + max_components_;
   const float* max_class = class_max_gpu_->cpu_data();
   const std::vector<int>& surfel_ids = map->GetSurfelIdsCpu();
   cv::Mat argmax_image(240,320,CV_8UC3);
+  // 对于这个图的每个像素
   for (int h = 0; h < 240; ++h) {
     for (int w = 0; w < 320; ++w) {
       float this_max_prob = 0.0;
       int this_max_class = 0;
       const int start = 0;
       const int end = 2;
+      // 搜索这个位置，在max图中，3*3邻域内的最大值
       for (int x = start; x < end; ++x) {
         for (int y = start; y < end; ++y) {
           int id = surfel_ids[((h * 2) + y) * 640 + (w * 2 + x)];
@@ -218,6 +258,7 @@ void SemanticFusionInterface::SaveArgMaxPredictions(std::string& filename,const 
           }
         }
       }
+      // 三个通道都是最大类别编号。
       argmax_image.at<cv::Vec3b>(h,w)[0] = static_cast<int>(this_max_class);
       argmax_image.at<cv::Vec3b>(h,w)[1] =  static_cast<int>(this_max_class);
       argmax_image.at<cv::Vec3b>(h,w)[2] =  static_cast<int>(this_max_class);
