@@ -143,6 +143,10 @@ void updateTable(int n, const int* deleted_ids, const int num_deleted, const int
     }
 }
 
+/*
+@ param
+filtered_ids：map里要删除的surfel id // 为什么删除？
+*/
 __host__ 
 void updateProbabilityTable(int* filtered_ids, const int num_filtered, const int current_table_size,
                             float const* probability_table, const int prob_width, const int prob_height, 
