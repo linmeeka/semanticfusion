@@ -35,8 +35,10 @@ public:
   std::shared_ptr<caffe::Blob<float> > ProcessFrame(
                             const ImagePtr rgb, const DepthPtr depth, 
                             const int height, const int width);
+  // 输出的类别数
   int num_output_classes();
 private:
+  // 模型是否初始化
   bool initialised_;
   std::unique_ptr<caffe::Net<float> > network_;
   std::shared_ptr<caffe::Blob<float> > output_probabilities_;

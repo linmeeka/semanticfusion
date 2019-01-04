@@ -33,6 +33,12 @@
 
 class SemanticFusionInterface {
 public:
+  /*
+  @ brief
+    构造函数，初始化
+    class_probabilities_gpu_:<1,1,c,n>
+    class_max_gpu_:<1,1,3,n> // 三个channel分别是：类别标号、对应概率、这个类别为最大值的出现次数
+  */
   SemanticFusionInterface(const int num_classes, const int prior_sample_size, 
                           const int max_components = 3000000, const float colour_threshold = 0.0)
     : current_table_size_(0)
@@ -54,7 +60,9 @@ public:
   virtual ~SemanticFusionInterface() {}
 
   int UpdateSurfelProbabilities(const int surfel_id, const std::vector<float>& class_probs);
+  // 更新概率
   void UpdateProbabilities(std::shared_ptr<caffe::Blob<float> > probs,const std::unique_ptr<ElasticFusionInterface>& map);
+  // 维护节点，加入、删除
   void UpdateProbabilityTable(const std::unique_ptr<ElasticFusionInterface>& map);
   void CalculateProjectedProbabilityMap(const std::unique_ptr<ElasticFusionInterface>& map);
 

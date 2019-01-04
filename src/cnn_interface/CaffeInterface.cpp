@@ -22,7 +22,13 @@
 #include <opencv2/imgproc/imgproc.hpp>
 #include <opencv2/photo/photo.hpp>
 
-
+/*
+@ brief
+初始化网络
+@ param
+model_path：网络的路径，.prototxt
+weights：模型的路径，.caffemodel
+*/
 bool CaffeInterface::Init(const std::string& model_path, const std::string& weights) {
   caffe::Caffe::SetDevice(0);
   caffe::Caffe::set_mode(caffe::Caffe::GPU);
@@ -32,6 +38,10 @@ bool CaffeInterface::Init(const std::string& model_path, const std::string& weig
   return true;
 }
  
+/*
+@ brief
+返回输出层的类别数
+*/
 int CaffeInterface::num_output_classes() {
   if (!initialised_) {
     return 0;
@@ -39,6 +49,13 @@ int CaffeInterface::num_output_classes() {
   return network_->output_blobs()[0]->shape()[1];
 }
 
+/*
+@ brief
+对一帧进行分割
+@ param
+rgb
+depth
+*/
 std::shared_ptr<caffe::Blob<float> > CaffeInterface::ProcessFrame(const ImagePtr rgb, const DepthPtr depth, 
                                   const int height, const int width) {
   if (!initialised_) {
@@ -48,6 +65,7 @@ std::shared_ptr<caffe::Blob<float> > CaffeInterface::ProcessFrame(const ImagePtr
   cv::Mat input_depth(height,width,CV_16UC1, depth);
   std::vector<caffe::Blob<float>* > inputs = network_->input_blobs();
   CHECK_EQ(inputs.size(),1) << "Only single inputs supported";
+  // 把输入图像转换成网络输入层要求的大小
   const int network_width = inputs[0]->width();
   const int network_height = inputs[0]->height();
   cv::Mat resized_image(network_height,network_width,CV_8UC3);
@@ -55,6 +73,7 @@ std::shared_ptr<caffe::Blob<float> > CaffeInterface::ProcessFrame(const ImagePtr
   cv::Mat resized_depth(network_height,network_width,CV_16UC1);
   cv::resize(input_depth,resized_depth,resized_depth.size(),0,0,cv::INTER_NEAREST);
 
+  // 去水印 去噪声
   // This performs inpainting of the depth map on the fly, however for NYU
   // experiments we used the same matlab inpainting given with the toolkit, so
   // the input to the CNN is the same as with the normal NYU baseline results
@@ -63,6 +82,7 @@ std::shared_ptr<caffe::Blob<float> > CaffeInterface::ProcessFrame(const ImagePtr
   const unsigned char noDepth = 0;
   cv::inpaint(depthf, (depthf == noDepth), depthf, 5.0, cv::INPAINT_TELEA);
 
+  // 去均值
   float* input_data = inputs[0]->mutable_cpu_data();
   const float mean[] = {104.0,117.0,123.0};
   for (int h = 0; h < network_height; ++h) {
@@ -89,7 +109,9 @@ std::shared_ptr<caffe::Blob<float> > CaffeInterface::ProcessFrame(const ImagePtr
     }
   }
   float loss;
+  // 送入网络
   const std::vector<caffe::Blob<float>* > output = network_->Forward(inputs,&loss);
+  // 得到结果blob
   if (!output_probabilities_) {
     output_probabilities_.reset(new caffe::Blob<float>(output[0]->shape()));
   }
