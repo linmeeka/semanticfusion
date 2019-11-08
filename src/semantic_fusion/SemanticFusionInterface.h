@@ -38,6 +38,7 @@ public:
     构造函数，初始化
     class_probabilities_gpu_:<1,1,c,n>
     class_max_gpu_:<1,1,3,n> // 三个channel分别是：类别标号、对应概率、这个类别为最大值的出现次数
+
   */
   SemanticFusionInterface(const int num_classes, const int prior_sample_size, 
                           const int max_components = 3000000, const float colour_threshold = 0.0)
@@ -75,17 +76,24 @@ public:
 private:
 
   // Returns negative if the class is below the threshold - otherwise returns the class
+  // 每一个surfel，对应每个类别的概率<1,1,c,n>
   std::vector<std::vector<float> > class_probabilities_;
   std::shared_ptr<caffe::Blob<float> > class_probabilities_gpu_;
   int current_table_size_;
+
+  // 对于每个surfel， 最大的概率<1,1,3,n>
+  // 三个channel分别是：类别标号、对应概率、这个类别为最大值的出现次数
   // This is used to store the table swap after updating
   std::shared_ptr<caffe::Blob<float> > class_probabilities_gpu_buffer_;
   std::shared_ptr<caffe::Blob<float> > class_max_gpu_;
   std::shared_ptr<caffe::Blob<float> > class_max_gpu_buffer_;
+
   // This stores the rendered probabilities of surfels from the map
+  // 当前视角下能看到的图像的surfel，的概率
   std::shared_ptr<caffe::Blob<float> > rendered_class_probabilities_gpu_;
   const int num_classes_;
   const int prior_sample_size_;
+  // component指surfel，最大数量
   const int max_components_;
   const float colour_threshold_;
 };

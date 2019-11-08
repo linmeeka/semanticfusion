@@ -55,16 +55,18 @@ void semanticTableUpdate(cudaTextureObject_t ids, const int ids_width, const int
                           const int prob_channels,float* map_table,float* map_max,
                           const int map_size)
 {
+    // 当前处理的index？
     const int x = blockIdx.x * blockDim.x + threadIdx.x;
     const int y = blockIdx.y * blockDim.y + threadIdx.y;
     // New uniqueness code
+    // 在16*16的区域内搜索，定义搜索范围
     const int check_patch = 16;
     const int x_min = (x - check_patch) < 0 ? 0 : (x - check_patch);
     const int x_max = (x + check_patch) > 640 ? 640 : (x + check_patch);
     const int y_min = (y - check_patch) < 0 ? 0 : (y - check_patch);
     int surfel_id = tex2D<int>(ids,x,y);
     int first_h, first_w;
-    // 找到map中的位置,h,w ？
+    // 在范围内找到第一个id相等的坐标
     for (int h = y_min; h < 480; ++h) {
         for (int w = x_min; w < x_max; ++w) {
             int other_surfel_id = tex2D<int>(ids,w,h);
@@ -138,11 +140,11 @@ void semanticTableUpdate(cudaTextureObject_t ids, const int ids_width, const int
 /*
 @param
 ids：map中surfel的ids。map->GetSurfelIdsGpu()
-ids_width：map->width
+ids_width：map->width 显示图像的长宽？
 ids_height = map->height();
 probabilities：分割结果blob，只读
 prob_width = probs->width(); 这个width是整张图的width <w,h,c,n> n是1 ？
-prob_height = probs->height();
+prob_height = probs->height(); 网络输出层
 prob_channels = probs->channels();
 map_table：class_pro，所有surfel所有类别的概率，待更新。class_probabilities_gpu_->mutable_gpu_data()，可写
 map_max：class_max，最大概率的map，可写。class_max_gpu_->mutable_gpu_data()
@@ -156,8 +158,8 @@ void fuseSemanticProbabilities(cudaTextureObject_t ids, const int ids_width, con
 {
     // NOTE Res must be pow 2 and > 32
     const int blocks = 32;
-    dim3 dimGrid(blocks,blocks);
-    dim3 dimBlock(640/blocks,480/blocks);
+    dim3 dimGrid(blocks,blocks); // 32*32 的 grid
+    dim3 dimBlock(640/blocks,480/blocks); // 每一个block中分得 (640/32, 480/32)
     semanticTableUpdate<<<dimGrid,dimBlock>>>(ids,ids_width,ids_height,probabilities,
         prob_width,prob_height,prob_channels,map_table,map_max,map_size);
     gpuErrChk(cudaGetLastError());
@@ -171,14 +173,14 @@ __global__
 
 @ param
 n：要更新的数量，surfel的数量乘以pro的height。num_to_update = new_prob_width * prob_height
-deleted_ids：要删除的surfel id
+deleted_ids：要删除的surfel id，指针
 num_deleted：要删除的surfel数量
 current_table_size：当前的surfel数
-probability_table：class_pro，只读
+probability_table：class_pro的blob数据，只读
 prob_width：应该是surfel的数量，n？class_probabilities_gpu_->width()
 prob_height：类别的数量，c。class_probabilities_gpu_->height()  prob height is the number of classes
-new_prob_width：map里所有surfle的数量。map->GetMapSurfelCount()
-new_probability_table：可写的class_pro_buffer。用于存储新的？
+new_prob_width：新map里所有surfle的数量。map->GetMapSurfelCount()
+new_probability_table：可写的class_pro_buffer。用于存储新的
 map_table：class_max,只读
 new_map_table：class_max_buffer，可写
 */
@@ -191,12 +193,17 @@ void updateTable(int n, const int* deleted_ids, const int num_deleted, const int
     if (index < n) {
         // index： row： classes col：components
         // 属于哪个类别 行数
+        // c*n的矩阵
+        // 从0开始？
         const int class_id = index / new_prob_width;
         // 属于这个类别的哪个component  列数
+        // 从1开始？
         const int component_id = index - (class_id * new_prob_width);
         // 为什么newid用的是prob_width，而前面的id用的是new prob width?
+        // 这里是不是old_id更恰当？ 得到的是这个类别这个surfel在原来map里的id
         const int new_id = (class_id * prob_width) + component_id;
         // 不在删除的范围内，即，是一个新的surfel？ 
+        // 新的概率值写入buffer
         if (component_id >= num_deleted) {
             // Initialise to prior (prob height is the number of classes)
             // 建一个新节点，各类概率等分
@@ -208,6 +215,7 @@ void updateTable(int n, const int* deleted_ids, const int num_deleted, const int
             new_map_table[component_id + prob_width + prob_width] = 0.0;
         }
         // 若已经存在，则更新 
+        // 同一个surfel，在图里的index不一样，但surfel总数不变？？
         else {
             // 原class_pro中的component编号
             int offset = deleted_ids[component_id];
@@ -225,13 +233,13 @@ void updateTable(int n, const int* deleted_ids, const int num_deleted, const int
 
 /*
 @ param
-filtered_ids：map里要删除的surfel id，由map->GetDeletedSurfelIdsGpu()获得 // 为什么删除？
+filtered_ids：*int，map里要删除的surfel id，由map->GetDeletedSurfelIdsGpu()获得 // 为什么删除？
 num_filtered：map里要删除surfel数量，由map->GetMapSurfelDeletedCount()获得
-current_table_size：当前table大小？当前所有点的数量？成员变量。// 在哪初始化？
+current_table_size：当前table大小，当前surfel的数量，每次调用这个函数后更新
 probability_table：class_pro的gpu数据（BLOB），所有点所有类别的概率图。class_probabilities_gpu_->gpu_data()获得。是一个只读的
 prob_width：图里点的数量。class_probabilities_gpu_->width()，(w,h,c,n)的blob，w是1？？
 prob_height：类别数。class_probabilities_gpu_->height()，h也是1？？
-new_prob_width：新的map里所有surfle的数量。map->GetMapSurfelCount()，用来维护current_table_size。
+new_prob_width：新的map里所有surfle的数量。map->GetMapSurfelCount()。
 new_probability_table：新的table，写入buffer。class_probabilities_gpu_buffer_->mutable_gpu_data()，mutable意味着可写
 map_table：保存每个surfel当前概率最大的类别的table。class_max_gpu_->gpu_data()，只读。
 new_map_table：新的table，class_max_gpu_buffer_->mutable_gpu_data()，可写。

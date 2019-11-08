@@ -106,14 +106,17 @@ int SemanticFusionInterface::max_num_components() const {
 
 /*
 @ brief
-用于更新概率图的节点，增加删除surfel
+用于更新概率图的节点，增加删除surfel，更新的时候用buffer
 */
 void SemanticFusionInterface::UpdateProbabilityTable(const std::unique_ptr<ElasticFusionInterface>& map)
 {
+  // 图的宽度，即surfel总数，这个值应该是每帧不一样的
   const int new_table_width = map->GetMapSurfelCount();
   const int num_deleted = map->GetMapSurfelDeletedCount();
+  // caffe blob width()返回第三维
   const int table_width = class_probabilities_gpu_->width();
   const int table_height = class_probabilities_gpu_->height();
+  // std::cout<<table_width<<" "<<table_height<<std::endl;
   updateProbabilityTable(map->GetDeletedSurfelIdsGpu(),num_deleted,current_table_size_,
                     class_probabilities_gpu_->gpu_data(), table_width, table_height,
                     new_table_width, class_probabilities_gpu_buffer_->mutable_gpu_data(),
@@ -167,11 +170,11 @@ void SemanticFusionInterface::UpdateProbabilities(std::shared_ptr<caffe::Blob<fl
                                       const std::unique_ptr<ElasticFusionInterface>& map)
 {
   CHECK_EQ(num_classes_,probs->channels());
-  // surfel地图的长宽，这个地图为什么存在长宽呢。？
-  const int id_width = map->width();
-  const int id_height = map->height();
-  // 这是<h,w,c,h>? 
-  const int prob_width = probs->width();
+  // surfel地图的长宽，这个地图为什么存在长宽呢？ 是显示的图像的大小？
+  const int id_width = map->width(); // 640
+  const int id_height = map->height(); //480
+  // 这是<n,c,h,w>
+  const int prob_width = probs->width(); 
   const int prob_height = probs->height();
   const int prob_channels = probs->channels();
   // 现在class_pro中的surfel数量

@@ -110,19 +110,24 @@ int main(int argc, char *argv[])
       // It MUST be done everytime ProcessFrame is performed as long as the map
       // is not performing tracking only (i.e. fine to not call, when working
       // with a static map)
+
+      //  更新概率图 UpdateProbabilityTable
       if(!gui->tracking()) {
         semantic_fusion->UpdateProbabilityTable(map);
       }
       // We do not need to perform a CNN update every frame, we perform it every
       // 'cnn_skip_frames'
+      // CNN分割
       if (frame_num == 0 || (frame_num > 1 && ((frame_num + 1) % cnn_skip_frames == 0))) {
         if (log_reader->hasDepthFilled()) {
           segmented_prob = caffe.ProcessFrame(log_reader->rgb, log_reader->depthfilled, height, width);
         } else {
           segmented_prob = caffe.ProcessFrame(log_reader->rgb, log_reader->depth, height, width);
         }
+        // 每次分割完更新
         semantic_fusion->UpdateProbabilities(segmented_prob,map);
       }
+      // CRF
       if (use_crf && frame_num % crf_skip_frames == 0) {
         std::cout<<"Performing CRF Update..."<<std::endl;
         semantic_fusion->CRFUpdate(map,crf_iterations);
